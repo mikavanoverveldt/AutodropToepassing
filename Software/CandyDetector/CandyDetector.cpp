@@ -1,3 +1,10 @@
+//////////////////////////////////////////////
+///     Work in progress                   /// 
+///
+///
+///
+
+
 // CandyDetector.cpp
 // Candy quality inspection using a Daheng camera and OpenCV.
 //
@@ -13,6 +20,21 @@
 //
 // Every intermediate result is shown in its own named window.
 // All tuneable parameters are exposed as trackbars.
+
+
+// TODO: 
+
+// Morphologie eerst per kleur, niet op de gecombineerde mask
+// Robustere kleur detectie
+// Formaat validatie verbeteren (niet alleen op oppervlakte, ook vorm?)
+
+// Finetunen met echte beelden van de camera in standaard, en backlight.
+
+// Commentaar per regel toevoegen
+
+
+// Kalibratie functie met 'known-good'  kleuren
+
 
 #include <opencv2/opencv.hpp>
 #include <iostream>

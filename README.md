@@ -65,24 +65,27 @@ Als een van de commando's een resultaat toont, is het library-pad succesvol toeg
 - Galaxy SDK (zie hierboven)
 - Daheng MER-133-54U3C camera aangesloten
 
-**Build & Run:**
+**Build:**
 ```bash
 cd Software/CandyDetector
 make              # Compileer
-make run          # Compileer en voer uit
 make clean        # Opschonen
 ```
+**Run:**
+```bash
+./CandyDetector
+```
 
-**Werking:**
-- 8-staps verwerkingspijplijn: grijs → HSV → kleurbereiken → morfologie → contourdetectie
-- Toont 10 visualisatievensters met real-time parameters
-- Trackbars voor live parameter aanpassing
-- Groen = geldig, rood = ongeldig
-- Ongeveer 30 FPS
 
-**Validatiecriteria:**
-- Geldig: rode pixels < 20% EN oppervlakte > 1500px
-- Ongeldig: rode pixels ≥ 20% OF oppervlakte < 1500px
+
+**Run met debug images:**
+```bash
+./CandyDetector --debug
+of
+./CandyDetector -d
+```
+
+
 
 ## Dependencies
 
@@ -91,3 +94,17 @@ make clean        # Opschonen
 - OpenCV 4.x
 - Galaxy SDK 2.4.2507.9231
 
+
+## TODO
+
+Een korte takenlijst voor volgende verbeteringen en cleanup:
+
+- [ ] Morphologie per kleur toepassen (niet op het gecombineerde mask)
+- [ ] Robustere kleurdetectie implementeren
+- [ ] Formaatvalidatie verbeteren (niet alleen oppervlakte — ook vorm)
+- [ ] Fintunen met echte camerabeelden (standaard en backlight)
+
+---
+Eventueel
+- [ ] Commentaar per regel toevoegen in broncode
+- [ ] Kalibratiefunctie toevoegen met "known-good" kleuren
