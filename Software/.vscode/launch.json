@@ -1,0 +1,34 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run test (no debug)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${fileDirname}/${fileBasenameNoExtension}",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "preLaunchTask": "C/C++: g++ build active file"
+        },
+        {
+            "name": "Run DahengLinux (no debug)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/DahengLinux/DahengLinux",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/DahengLinux",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "preLaunchTask": "C/C++: make DahengLinux"
+        }
+    ]
+}

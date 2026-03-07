@@ -1,0 +1,36 @@
+﻿  detect.cpp
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(96,22): warning C4244: '=': conversion from '_Tp' to 'int', possible loss of data
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(96,22): warning C4244:         with
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(96,22): warning C4244:         [
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(96,22): warning C4244:             _Tp=double
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(96,22): warning C4244:         ]
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(98,22): warning C4244: '=': conversion from '_Tp' to 'int', possible loss of data
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(98,22): warning C4244:         with
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(98,22): warning C4244:         [
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(98,22): warning C4244:             _Tp=double
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(98,22): warning C4244:         ]
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(111,22): warning C4244: '=': conversion from '_Tp' to 'int', possible loss of data
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(111,22): warning C4244:         with
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(111,22): warning C4244:         [
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(111,22): warning C4244:             _Tp=double
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(111,22): warning C4244:         ]
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(113,22): warning C4244: '=': conversion from '_Tp' to 'int', possible loss of data
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(113,22): warning C4244:         with
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(113,22): warning C4244:         [
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(113,22): warning C4244:             _Tp=double
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(113,22): warning C4244:         ]
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(143,14): warning C4267: 'initializing': conversion from 'size_t' to 'int', possible loss of data
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(200,21): warning C4244: '=': conversion from 'double' to 'int', possible loss of data
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(203,24): warning C4244: '=': conversion from '_Tp' to 'int', possible loss of data
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(203,24): warning C4244:         with
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(203,24): warning C4244:         [
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(203,24): warning C4244:             _Tp=float
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(203,24): warning C4244:         ]
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(204,25): warning C4244: '=': conversion from '_Tp' to 'int', possible loss of data
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(204,25): warning C4244:         with
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(204,25): warning C4244:         [
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(204,25): warning C4244:             _Tp=float
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(204,25): warning C4244:         ]
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(205,35): warning C4244: '=': conversion from 'double' to 'int', possible loss of data
+C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\autodrop v5\detect.cpp(206,35): warning C4244: '=': conversion from 'double' to 'int', possible loss of data
+  autodrop v5.vcxproj -> C:\Users\thomas\Desktop\2e Jaar mechatronica\Periode 3\Fase 3\autodrop v7\autodrop v5\x64\Debug\autodrop v5.exe
