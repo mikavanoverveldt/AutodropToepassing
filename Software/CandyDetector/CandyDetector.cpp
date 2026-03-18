@@ -23,17 +23,22 @@
 
 
 // TODO: 
-
-// Morphologie eerst per kleur, niet op de gecombineerde mask
+// Morphologie eerst per kleur, niet op de gecombineerde mask (DONE)
 // Robustere kleur detectie
-// Formaat validatie verbeteren (niet alleen op oppervlakte, ook vorm?)
 
-// Finetunen met echte beelden van de camera in standaard, en backlight.
+// Finetunen met echte beelden van de camera in standaard met backlight.
 
 // Commentaar per regel toevoegen
 
 
 // Kalibratie functie met 'known-good'  kleuren
+
+
+// TRIAL AND ERROR SETTINGS:
+// Contrast: 75/300
+// Saturation:175/300
+// Blur 5/15
+
 
 
 #include <opencv2/opencv.hpp>
@@ -72,8 +77,10 @@ struct Params
     // Stage 1 – Gaussian Blur
     int blurKsize = 5;          // must be odd; we force it below
 
-    // Stage 3a – Black candy mask
-    int blackVMax  = 60;        // V channel upper bound
+    // Stage 3a – Black candy mask (sugar-coated black)
+    int blackHMin = 0;   int blackHMax = 180;
+    int blackSMin = 0;   int blackSMax = 100;
+    int blackVMin = 0;   int blackVMax = 60;
 
     // Stage 3b – Dark-yellow candy mask
     int dyHMin = 15;  int dyHMax = 38;
@@ -113,8 +120,10 @@ static void createWindows()
         "4a - Mask: Black",
         "4b - Mask: DarkYellow",
         "4c - Mask: Red/Pink",
-        "5 - Combined Mask",
-        "6 - Morphology",
+        "5 - Morphology: Black",
+        "5b - Morphology: DarkYellow",
+        "5c - Morphology: Red/Pink",
+        "6 - Combined Mask",
         "7 - Contours",
         "8 - Result"
     };
@@ -133,8 +142,12 @@ static void createWindows()
                    &P.blurKsize, 15); // stored as k, actual = 2k+1
 
     // ── Black mask ──────────────────────────────────────────────────────────
-    createTrackbar("V max", "4a - Mask: Black",
-                   &P.blackVMax, 255);
+    createTrackbar("H min", "4a - Mask: Black", &P.blackHMin, 180);
+    createTrackbar("H max", "4a - Mask: Black", &P.blackHMax, 180);
+    createTrackbar("S min", "4a - Mask: Black", &P.blackSMin, 255);
+    createTrackbar("S max", "4a - Mask: Black", &P.blackSMax, 255);
+    createTrackbar("V min", "4a - Mask: Black", &P.blackVMin, 255);
+    createTrackbar("V max", "4a - Mask: Black", &P.blackVMax, 255);
 
     // ── Dark-yellow mask ────────────────────────────────────────────────────
     createTrackbar("H min", "4b - Mask: DarkYellow", &P.dyHMin, 180);
@@ -153,8 +166,8 @@ static void createWindows()
     createTrackbar("Band2 S min", "4c - Mask: Red/Pink", &P.r2SMin, 255);
 
     // ── Morphology ──────────────────────────────────────────────────────────
-    createTrackbar("Close K", "6 - Morphology", &P.morphCloseK, 30);
-    createTrackbar("Open  K", "6 - Morphology", &P.morphOpenK,  30);
+    createTrackbar("Close K", "6 - Combined Mask", &P.morphCloseK, 30);
+    createTrackbar("Open  K", "6 - Combined Mask",  &P.morphOpenK,  30);
 
     // ── Size thresholds ─────────────────────────────────────────────────────
     createTrackbar("Min detect area", "7 - Contours",  &P.minArea,      20000);
@@ -194,11 +207,11 @@ static void processFrame(const Mat& colorFrame)
     cvtColor(blurred, hsv, COLOR_BGR2HSV);
     imshow("3 - HSV", hsv);
 
-    // ── Stage 4a: Black mask  (low Value, any hue) ───────────────────────────
+    // ── Stage 4a: Black mask (sugar-coated, full HSV band) ──────────────────
     Mat maskBlack;
     inRange(hsv,
-            Scalar(0,   0,   0),
-            Scalar(180, 255, max(0, P.blackVMax)),
+            Scalar(P.blackHMin, P.blackSMin, P.blackVMin),
+            Scalar(P.blackHMax, P.blackSMax, P.blackVMax),
             maskBlack);
     imshow("4a - Mask: Black", maskBlack);
 
@@ -223,25 +236,34 @@ static void processFrame(const Mat& colorFrame)
     bitwise_or(maskR1, maskR2, maskRed);
     imshow("4c - Mask: Red/Pink", maskRed);
 
-    // ── Stage 5: Combined mask (all candy colours) ───────────────────────────
-    Mat maskAll;
-    bitwise_or(maskBlack, maskDY,  maskAll);
-    bitwise_or(maskAll,   maskRed, maskAll);
-    imshow("5 - Combined Mask", maskAll);
-
-    // ── Stage 6: Morphology ──────────────────────────────────────────────────
-    Mat morphed = maskAll.clone();
+    // ── Stage 5: Morphology on individual masks (before combining) ───────────
     int ck = max(1, P.morphCloseK);
     int ok = max(1, P.morphOpenK);
     Mat elemClose = getStructuringElement(MORPH_ELLIPSE, Size(ck * 2 + 1, ck * 2 + 1));
     Mat elemOpen  = getStructuringElement(MORPH_ELLIPSE, Size(ok * 2 + 1, ok * 2 + 1));
-    morphologyEx(morphed, morphed, MORPH_CLOSE, elemClose);
-    morphologyEx(morphed, morphed, MORPH_OPEN,  elemOpen);
-    imshow("6 - Morphology", morphed);
+
+    Mat maskBlackMorphed, maskDYMorphed, maskRedMorphed;
+    morphologyEx(maskBlack, maskBlackMorphed, MORPH_CLOSE, elemClose);
+    morphologyEx(maskBlackMorphed, maskBlackMorphed, MORPH_OPEN, elemOpen);
+
+    morphologyEx(maskDY, maskDYMorphed, MORPH_CLOSE, elemClose);
+    morphologyEx(maskDYMorphed, maskDYMorphed, MORPH_OPEN, elemOpen);
+
+    morphologyEx(maskRed, maskRedMorphed, MORPH_CLOSE, elemClose);
+    morphologyEx(maskRedMorphed, maskRedMorphed, MORPH_OPEN, elemOpen);
+    imshow("5 - Morphology: Black", maskBlackMorphed);
+    imshow("5b - Morphology: DarkYellow", maskDYMorphed);
+    imshow("5c - Morphology: Red/Pink", maskRedMorphed);
+
+    // ── Stage 6: Combined mask (all candy colours after morphology) ──────────
+    Mat maskAll;
+    bitwise_or(maskBlackMorphed, maskDYMorphed, maskAll);
+    bitwise_or(maskAll,          maskRedMorphed, maskAll);
+    imshow("6 - Combined Mask", maskAll);
 
     // ── Stage 7: findContours ────────────────────────────────────────────────
     vector<vector<Point>> contours;
-    findContours(morphed, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+    findContours(maskAll, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
 
     // Draw all accepted contours for the "7 - Contours" window
     Mat contourVis = enhanced.clone();
@@ -276,8 +298,8 @@ static void processFrame(const Mat& colorFrame)
 
         // Count red/pink pixels vs total candy pixels
         Mat redInside, allInside;
-        bitwise_and(maskRed, cntMask, redInside);
-        bitwise_and(morphed,  cntMask, allInside);
+        bitwise_and(maskRedMorphed, cntMask, redInside);
+        bitwise_and(maskAll,        cntMask, allInside);
 
         int totalPx = countNonZero(allInside);
         int redPx   = countNonZero(redInside);
