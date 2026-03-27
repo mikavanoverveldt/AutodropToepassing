@@ -96,12 +96,12 @@ struct Params
     // Stage 3a – Black candy mask (sugar-coated black)
     int blackHMin = 29;   int blackHMax = 61;
     int blackSMin = 84; int blackSMax = 228;
-    int blackVMin = 0;   int blackVMax = 159;
+    int blackVMin = 0;   int blackVMax = 96;
 
     // Stage 3b – Dark-yellow candy mask
     int dyHMin = 27;  int dyHMax = 64;
     int dySMin = 230;  int dySMax = 255;
-    int dyVMin = 119;   int dyVMax = 255;
+    int dyVMin = 79;   int dyVMax = 255;
 
     // Stage 3c – Red/pink mask (two hue bands)
     int r1HMin = 10;  int r1HMax = 23;
@@ -112,12 +112,19 @@ struct Params
     // Stage 4 – Morphology
     int morphCloseK = 11;
     int morphOpenK  = 17;
-    int distThreshPct = 56;
-    int sureBgDilateK = 76;
 
-    // Stage 5 – Contour size gate (area in pixels)
-    int minArea     = 800;
-    int minValidArea = 1500;    // below this a candy is "broken"
+    // Stage 5 – Watershed (Black + Yellow)
+    int distThreshPct = 55;
+    int sureBgDilateK = 41;
+    
+    // Red specific watershed params
+    int redDistThreshPct = 76;
+    int redSureBgDilateK = 26;
+    int redMarkerDilateK = 2;
+
+    // Stage 6 – Contour size gate (area in pixels)
+    int minArea     = 1250;
+    int minValidArea = 19000;    // below this a candy is "broken"
 };
 
 static Params P;
@@ -140,10 +147,11 @@ static void createWindows()
         "4a - Morphology: Black",
         "4b - Morphology: DarkYellow",
         "4c - Morphology: Red/Pink",
-        "4d - Watershed DT (Red)",
-        "4e - Separated: Black",
-        "4f - Separated: DarkYellow",
-        "4g - Separated: Red/Pink",
+        "4d - Watershed DT (Yellow)",
+        "4e - Watershed DT (Red)",
+        "4f - Separated: Black",
+        "4g - Separated: DarkYellow",
+        "4h - Separated: Red/Pink",
         "5 - Combined Mask",
         "6 - Contours",
         "8 - Result"
@@ -189,8 +197,15 @@ static void createWindows()
     // ── Morphology ──────────────────────────────────────────────────────────
     createTrackbar("Close K", "4a - Morphology: Black", &P.morphCloseK, 150);
     createTrackbar("Open  K", "4a - Morphology: Black",  &P.morphOpenK,  150);
-    createTrackbar("DT Threshold %", "4d - Watershed DT (Red)", &P.distThreshPct, 100);
-    createTrackbar("Sure BG Dilate K", "4d - Watershed DT (Red)", &P.sureBgDilateK, 150);
+    
+    // Black/Yellow watershed params
+    createTrackbar("DT Threshold %", "4d - Watershed DT (Yellow)", &P.distThreshPct, 100);
+    createTrackbar("Sure BG Dilate K", "4d - Watershed DT (Yellow)", &P.sureBgDilateK, 150);
+
+    // Red watershed params
+    createTrackbar("Red DT Thresh %", "4e - Watershed DT (Red)", &P.redDistThreshPct, 100);
+    createTrackbar("Red Sure BG Dilate", "4e - Watershed DT (Red)", &P.redSureBgDilateK, 150);
+    createTrackbar("Red Marker Dilate", "4e - Watershed DT (Red)", &P.redMarkerDilateK, 30);
 
     // ── Size thresholds ─────────────────────────────────────────────────────
     createTrackbar("Min detect area", "6 - Contours",  &P.minArea,      2000);
@@ -202,7 +217,7 @@ static void createWindows()
 // applyWatershed() - separates touching objects
 // ---------------------------------------------------------------------------
 static Mat applyWatershed(const Mat& morphMask, const Mat& originalImage, 
-                          int distThreshPct, int dilateK, 
+                          int distThreshPct, int dilateK, int markerDilateK = 0,
                           Mat* outDistMap = nullptr)
 {
     if (countNonZero(morphMask) == 0) return morphMask.clone();
@@ -228,6 +243,13 @@ static Mat applyWatershed(const Mat& morphMask, const Mat& originalImage,
     Mat sureFg;
     threshold(distTransform, sureFg, (max(1, distThreshPct) / 100.0) * maxVal, 255, THRESH_BINARY);
     sureFg.convertTo(sureFg, CV_8U);
+    
+    // Optional: Dilate the sure foreground to merge peaks of elongated objects (like ovals)
+    if (markerDilateK > 0)
+    {
+        Mat elemMarkerDilate = getStructuringElement(MORPH_ELLIPSE, Size(markerDilateK * 2 + 1, markerDilateK * 2 + 1));
+        dilate(sureFg, sureFg, elemMarkerDilate);
+    }
 
     // 4. Unknown region
     Mat unknown;
@@ -292,18 +314,18 @@ static void processFrame(const Mat& colorFrame)
         merge(ch, hsv0);
         cvtColor(hsv0, enhanced, COLOR_HSV2BGR);
     }
-    imshow("0 - Enhanced", enhanced);
+   //imshow("0 - Enhanced", enhanced);
 
     // ── Stage 1: Gaussian Blur ───────────────────────────────────────────────
     int k = max(1, P.blurKsize) * 2 + 1;   // ensure odd, ≥ 3
     Mat blurred;
     GaussianBlur(enhanced, blurred, Size(k, k), 0);
-    imshow("1 - Blurred", blurred);
+    //imshow("1 - Blurred", blurred);
 
     // ── Stage 2: BGR → HSV ──────────────────────────────────────────────────
     Mat hsv;
     cvtColor(blurred, hsv, COLOR_BGR2HSV);
-    imshow("2 - HSV", hsv);
+    //imshow("2 - HSV", hsv);
 
     // ── Stage 3a: Black mask (full HSV band) ──────────────────
     Mat maskBlack;
@@ -349,20 +371,22 @@ static void processFrame(const Mat& colorFrame)
 
     morphologyEx(maskRed, maskRedMorphed, MORPH_CLOSE, elemClose);
     morphologyEx(maskRedMorphed, maskRedMorphed, MORPH_OPEN, elemOpen);
-    imshow("4a - Morphology: Black", maskBlackMorphed);
-    imshow("4b - Morphology: DarkYellow", maskDYMorphed);
-    imshow("4c - Morphology: Red/Pink", maskRedMorphed);
+    //imshow("4a - Morphology: Black", maskBlackMorphed);
+    //imshow("4b - Morphology: DarkYellow", maskDYMorphed);
+    //imshow("4c - Morphology: Red/Pink", maskRedMorphed);
 
     // ── Stage 5: Distance Transform + Watershed separation ───────────────────
     Mat distRedMap;
-    Mat maskRedSeparated   = applyWatershed(maskRedMorphed, enhanced, P.distThreshPct, P.sureBgDilateK, &distRedMap);
-    Mat maskBlackSeparated = applyWatershed(maskBlackMorphed, enhanced, P.distThreshPct, P.sureBgDilateK);
-    Mat maskDYSeparated    = applyWatershed(maskDYMorphed, enhanced, P.distThreshPct, P.sureBgDilateK);
+    Mat maskRedSeparated   = applyWatershed(maskRedMorphed, enhanced, P.redDistThreshPct, P.redSureBgDilateK, P.redMarkerDilateK, &distRedMap);
+    Mat maskBlackSeparated = applyWatershed(maskBlackMorphed, enhanced, P.distThreshPct, P.sureBgDilateK, 0);
+    Mat distDYMap;
+    Mat maskDYSeparated    = applyWatershed(maskDYMorphed, enhanced, P.distThreshPct, P.sureBgDilateK, 0, &distDYMap);
 
-    if (!distRedMap.empty()) imshow("4d - Watershed DT (Red)", distRedMap);
-    imshow("4e - Separated: Black", maskBlackSeparated);
-    imshow("4f - Separated: DarkYellow", maskDYSeparated);
-    imshow("4g - Separated: Red/Pink", maskRedSeparated);
+    if (!distDYMap.empty())  imshow("4d - Watershed DT (Yellow)", distDYMap);
+    if (!distRedMap.empty()) imshow("4e - Watershed DT (Red)", distRedMap);
+    imshow("4f - Separated: Black", maskBlackSeparated);
+    imshow("4g - Separated: DarkYellow", maskDYSeparated);
+    imshow("4h - Separated: Red/Pink", maskRedSeparated);
 
 
     // ── Stage 6: findContours per colour mask ────────────────────────────────
@@ -390,7 +414,7 @@ static void processFrame(const Mat& colorFrame)
     Mat result = enhanced.clone();
     int minValid = max(1, P.minValidArea);
 
-    auto drawDetections = [&](const vector<vector<Point>>& contours, const string& colorTag)
+    auto drawDetections = [&](const vector<vector<Point>>& contours, const string& colorTag, bool forceInvalid)
     {
         for (const auto& cnt : contours)
         {
@@ -398,14 +422,18 @@ static void processFrame(const Mat& colorFrame)
             if (area < minA)
                 continue;
 
-            bool invalid = (area < minValid);
+            bool invalid = forceInvalid || (area < minValid);
 
             Rect bbox = boundingRect(cnt);
 
             Scalar boxColor = invalid ? Scalar(0, 0, 255) : Scalar(0, 255, 0);
             rectangle(result, bbox, boxColor, 3);
 
-            string label = colorTag + (invalid ? " inv:size" : " valid");
+            string label = colorTag;
+            if (forceInvalid) label += " inv:col";
+            else if (area < minValid) label += " inv:size";
+            else label += " valid";
+
             int baseline = 0;
             Size textSize = getTextSize(label, FONT_HERSHEY_SIMPLEX, 0.55, 2, &baseline);
             int textX = bbox.x + bbox.width - textSize.width - 5;
@@ -417,9 +445,9 @@ static void processFrame(const Mat& colorFrame)
         }
     };
 
-    drawDetections(contoursRed,   "red");
-    drawDetections(contoursDY,    "yellow");
-    drawDetections(contoursBlack, "black");
+    drawDetections(contoursRed,   "red",    true);
+    drawDetections(contoursDY,    "yellow", false);
+    drawDetections(contoursBlack, "black",  false);
 
     imshow("8 - Result", result);
 }
