@@ -87,31 +87,33 @@ static void PrintErrorInfo(GX_STATUS emStatus)
 struct Params
 {
     // Stage 0 – Contrast & Saturation
-    int contrastAlpha    = 140;  // real multiplier = value / 100.0  (75 → ×0.75)
-    int saturationScale = 180; // real multiplier = value / 100.0  (175 → ×1.75)
+    int contrastAlpha    = 84;  // real multiplier = value / 100.0  (75 → ×0.75)
+    int saturationScale = 142; // real multiplier = value / 100.0  (175 → ×1.75)
 
     // Stage 1 – Gaussian Blur
     int blurKsize = 3;          // must be odd; we force it below
 
     // Stage 3a – Black candy mask (sugar-coated black)
-    int blackHMin = 18;   int blackHMax = 180;
+    int blackHMin = 29;   int blackHMax = 61;
     int blackSMin = 84; int blackSMax = 228;
-    int blackVMin = 0;   int blackVMax = 141;
+    int blackVMin = 0;   int blackVMax = 159;
 
     // Stage 3b – Dark-yellow candy mask
-    int dyHMin = 26;  int dyHMax = 38;
-    int dySMin = 69;  int dySMax = 255;
-    int dyVMin = 0;   int dyVMax = 255;
+    int dyHMin = 27;  int dyHMax = 64;
+    int dySMin = 230;  int dySMax = 255;
+    int dyVMin = 119;   int dyVMax = 255;
 
     // Stage 3c – Red/pink mask (two hue bands)
-    int r1HMin = 0;  int r1HMax = 20;
-    int r1SMin = 53;
-    int r2HMin = 1;  int r2HMax = 0;
+    int r1HMin = 10;  int r1HMax = 23;
+    int r1SMin = 148;
+    int r2HMin = 96;  int r2HMax = 180;
     int r2SMin = 0;
 
     // Stage 4 – Morphology
-    int morphCloseK = 15;
-    int morphOpenK  = 12;
+    int morphCloseK = 11;
+    int morphOpenK  = 17;
+    int distThreshPct = 56;
+    int sureBgDilateK = 76;
 
     // Stage 5 – Contour size gate (area in pixels)
     int minArea     = 800;
@@ -131,15 +133,20 @@ static void createWindows()
     const char* wins[] = {
         "0 - Enhanced",
         "1 - Blurred",
+        "2 - HSV",
         "3a - Mask: Black",
         "3b - Mask: DarkYellow",
         "3c - Mask: Red/Pink",
         "4a - Morphology: Black",
         "4b - Morphology: DarkYellow",
         "4c - Morphology: Red/Pink",
+        "4d - Watershed DT (Red)",
+        "4e - Separated: Black",
+        "4f - Separated: DarkYellow",
+        "4g - Separated: Red/Pink",
         "5 - Combined Mask",
         "6 - Contours",
-        "7 - Result"
+        "8 - Result"
     };
     for (auto& w : wins)
     {
@@ -180,12 +187,92 @@ static void createWindows()
     createTrackbar("Band2 S min", "3c - Mask: Red/Pink", &P.r2SMin, 255);
 
     // ── Morphology ──────────────────────────────────────────────────────────
-    createTrackbar("Close K", "4a - Morphology: Black", &P.morphCloseK, 30);
-    createTrackbar("Open  K", "4a - Morphology: Black",  &P.morphOpenK,  30);
+    createTrackbar("Close K", "4a - Morphology: Black", &P.morphCloseK, 150);
+    createTrackbar("Open  K", "4a - Morphology: Black",  &P.morphOpenK,  150);
+    createTrackbar("DT Threshold %", "4d - Watershed DT (Red)", &P.distThreshPct, 100);
+    createTrackbar("Sure BG Dilate K", "4d - Watershed DT (Red)", &P.sureBgDilateK, 150);
 
     // ── Size thresholds ─────────────────────────────────────────────────────
     createTrackbar("Min detect area", "6 - Contours",  &P.minArea,      2000);
     createTrackbar("Min valid area",  "6 - Contours",  &P.minValidArea, 50000);
+}
+
+
+// ---------------------------------------------------------------------------
+// applyWatershed() - separates touching objects
+// ---------------------------------------------------------------------------
+static Mat applyWatershed(const Mat& morphMask, const Mat& originalImage, 
+                          int distThreshPct, int dilateK, 
+                          Mat* outDistMap = nullptr)
+{
+    if (countNonZero(morphMask) == 0) return morphMask.clone();
+
+    // 1. Sure background
+    Mat sureBg;
+    int dk = max(1, dilateK);
+    Mat elemDilate = getStructuringElement(MORPH_RECT, Size(dk * 2 + 1, dk * 2 + 1));
+    dilate(morphMask, sureBg, elemDilate);
+
+    // 2. Distance transform
+    Mat distTransform;
+    distanceTransform(morphMask, distTransform, DIST_L2, 5);
+
+    if (outDistMap)
+    {
+        normalize(distTransform, *outDistMap, 0, 1.0, NORM_MINMAX);
+    }
+
+    // 3. Sure foreground
+    double maxVal;
+    minMaxLoc(distTransform, NULL, &maxVal);
+    Mat sureFg;
+    threshold(distTransform, sureFg, (max(1, distThreshPct) / 100.0) * maxVal, 255, THRESH_BINARY);
+    sureFg.convertTo(sureFg, CV_8U);
+
+    // 4. Unknown region
+    Mat unknown;
+    subtract(sureBg, sureFg, unknown);
+
+    // 5. Marker labelling
+    Mat markers;
+    connectedComponents(sureFg, markers);
+
+    // Add one to all labels so that sure background is not 0, but 1
+    markers = markers + 1;
+
+    // Now, mark the region of unknown with zero
+    for (int r = 0; r < markers.rows; r++) {
+        for (int c = 0; c < markers.cols; c++) {
+            if (unknown.at<uchar>(r, c) == 255) {
+                markers.at<int>(r, c) = 0;
+            }
+        }
+    }
+
+    // 6. Apply watershed
+    // We use a flat image instead of originalImage to avoid boundaries fluctuating due to texture/lighting
+    Mat flatImg;
+    cvtColor(morphMask, flatImg, COLOR_GRAY2BGR);
+    watershed(flatImg, markers);
+
+    // 7. Generate separated mask (draw boundaries as black on original mask)
+    Mat boundaries = Mat::zeros(markers.size(), CV_8U);
+    for (int r = 0; r < markers.rows; r++) {
+        for (int c = 0; c < markers.cols; c++) {
+            if (markers.at<int>(r, c) == -1) {
+                boundaries.at<uchar>(r, c) = 255;
+            }
+        }
+    }
+
+    // Dilate the 1-pixel boundary so findContours doesn't cross diagonally
+    Mat elemBoundary = getStructuringElement(MORPH_RECT, Size(3, 3));
+    dilate(boundaries, boundaries, elemBoundary);
+
+    Mat separatedMask = morphMask.clone();
+    separatedMask.setTo(0, boundaries);
+
+    return separatedMask;
 }
 
 // ---------------------------------------------------------------------------
@@ -218,7 +305,7 @@ static void processFrame(const Mat& colorFrame)
     cvtColor(blurred, hsv, COLOR_BGR2HSV);
     imshow("2 - HSV", hsv);
 
-    // ── Stage 3a: Black mask (sugar-coated, full HSV band) ──────────────────
+    // ── Stage 3a: Black mask (full HSV band) ──────────────────
     Mat maskBlack;
     inRange(hsv,
             Scalar(P.blackHMin, P.blackSMin, P.blackVMin),
@@ -247,7 +334,7 @@ static void processFrame(const Mat& colorFrame)
     bitwise_or(maskR1, maskR2, maskRed);
     imshow("3c - Mask: Red/Pink", maskRed);
 
-    // ── Stage 4: Morphology on individual masks (before combining) ───────────
+    // ── Stage 4: Morphology on individual masks ──────────────────────────────
     int ck = max(1, P.morphCloseK);
     int ok = max(1, P.morphOpenK);
     Mat elemClose = getStructuringElement(MORPH_ELLIPSE, Size(ck * 2 + 1, ck * 2 + 1));
@@ -266,86 +353,73 @@ static void processFrame(const Mat& colorFrame)
     imshow("4b - Morphology: DarkYellow", maskDYMorphed);
     imshow("4c - Morphology: Red/Pink", maskRedMorphed);
 
-    // ── Stage 5: Combined mask (all candy colours after morphology) ──────────
-    Mat maskAll;
-    bitwise_or(maskBlackMorphed, maskDYMorphed, maskAll);
-    bitwise_or(maskAll,          maskRedMorphed, maskAll);
-    imshow("5 - Combined Mask", maskAll);
+    // ── Stage 5: Distance Transform + Watershed separation ───────────────────
+    Mat distRedMap;
+    Mat maskRedSeparated   = applyWatershed(maskRedMorphed, enhanced, P.distThreshPct, P.sureBgDilateK, &distRedMap);
+    Mat maskBlackSeparated = applyWatershed(maskBlackMorphed, enhanced, P.distThreshPct, P.sureBgDilateK);
+    Mat maskDYSeparated    = applyWatershed(maskDYMorphed, enhanced, P.distThreshPct, P.sureBgDilateK);
 
-    // ── Stage 6: findContours ──────────────────────────────────────────────
-    vector<vector<Point>> contours;
-    findContours(maskAll, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+    if (!distRedMap.empty()) imshow("4d - Watershed DT (Red)", distRedMap);
+    imshow("4e - Separated: Black", maskBlackSeparated);
+    imshow("4f - Separated: DarkYellow", maskDYSeparated);
+    imshow("4g - Separated: Red/Pink", maskRedSeparated);
+
+
+    // ── Stage 6: findContours per colour mask ────────────────────────────────
+    vector<vector<Point>> contoursRed, contoursDY, contoursBlack;
+    findContours(maskRedSeparated,   contoursRed,   RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+    findContours(maskDYSeparated,    contoursDY,    RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+    findContours(maskBlackSeparated, contoursBlack, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
 
     // Draw all accepted contours for the "6 - Contours" window
     Mat contourVis = enhanced.clone();
     int minA = max(1, P.minArea);
 
-    for (size_t i = 0; i < contours.size(); i++)
-    {
-        double area = contourArea(contours[i]);
-        if (area < minA)
-            continue;
-        drawContours(contourVis, contours, (int)i, Scalar(255, 255, 0), 2);
-    }
+    for (size_t i = 0; i < contoursRed.size(); i++)
+        if (contourArea(contoursRed[i]) >= minA)
+            drawContours(contourVis, contoursRed, (int)i, Scalar(0, 0, 255), 2);
+    for (size_t i = 0; i < contoursDY.size(); i++)
+        if (contourArea(contoursDY[i]) >= minA)
+            drawContours(contourVis, contoursDY, (int)i, Scalar(0, 255, 255), 2);
+    for (size_t i = 0; i < contoursBlack.size(); i++)
+        if (contourArea(contoursBlack[i]) >= minA)
+            drawContours(contourVis, contoursBlack, (int)i, Scalar(255, 255, 255), 2);
     imshow("6 - Contours", contourVis);
 
-    // ── Stage 7: Per-candy classification + bounding box drawing ─────────────
+    // ── Stage 7: Size validation + bounding boxes (Red, Yellow, Black) ───────
     Mat result = enhanced.clone();
     int minValid = max(1, P.minValidArea);
 
-    for (const auto& cnt : contours)
+    auto drawDetections = [&](const vector<vector<Point>>& contours, const string& colorTag)
     {
-        double area = contourArea(cnt);
-        if (area < minA)
-            continue;   // too small to be a candy at all (noise)
-
-        Rect bbox = boundingRect(cnt);
-
-        // ── Colour vote inside this contour ──────────────────────────────────
-        // Build a single-contour mask
-        Mat cntMask = Mat::zeros(enhanced.size(), CV_8UC1);
-        vector<vector<Point>> tmp = {cnt};
-        drawContours(cntMask, tmp, 0, Scalar(255), FILLED);
-
-        // Count red/pink pixels vs total candy pixels
-        Mat redInside, allInside;
-        bitwise_and(maskRedMorphed, cntMask, redInside);
-        bitwise_and(maskAll,        cntMask, allInside);
-
-        int totalPx = countNonZero(allInside);
-        int redPx   = countNonZero(redInside);
-
-        double redRatio = (totalPx > 0) ? (double)redPx / totalPx : 0.0;
-
-        bool colorInvalid = (redRatio > 0.20); // > 20 % red pixels → invalid
-        bool sizeInvalid  = (area < minValid);
-
-        bool invalid = colorInvalid || sizeInvalid;
-
-        Scalar colour = invalid ? Scalar(0, 0, 255)   // red
-                                : Scalar(0, 255, 0);  // green
-        rectangle(result, bbox, colour, 3);
-
-        // Label
-        string label;
-        if (!invalid)
+        for (const auto& cnt : contours)
         {
-            label = "valid";
+            double area = contourArea(cnt);
+            if (area < minA)
+                continue;
+
+            bool invalid = (area < minValid);
+
+            Rect bbox = boundingRect(cnt);
+
+            Scalar boxColor = invalid ? Scalar(0, 0, 255) : Scalar(0, 255, 0);
+            rectangle(result, bbox, boxColor, 3);
+
+            string label = colorTag + (invalid ? " inv:size" : " valid");
+            int baseline = 0;
+            Size textSize = getTextSize(label, FONT_HERSHEY_SIMPLEX, 0.55, 2, &baseline);
+            int textX = bbox.x + bbox.width - textSize.width - 5;
+            int textY = bbox.y + bbox.height - baseline - 5;
+            textX = max(0, textX);
+            textY = max(textSize.height, textY);
+            putText(result, label, Point(textX, textY),
+                    FONT_HERSHEY_SIMPLEX, 0.55, boxColor, 2);
         }
-        else
-        {
-            if (colorInvalid && sizeInvalid) label = "inv: col+size";
-            else if (colorInvalid)           label = "inv: col";
-            else                             label = "inv: size";
-        }
-        // Position text at bottom-right inside the box
-        int baseline = 0;
-        Size textSize = getTextSize(label, FONT_HERSHEY_SIMPLEX, 0.55, 2, &baseline);
-        int textX = bbox.x + bbox.width - textSize.width - 5;
-        int textY = bbox.y + bbox.height - baseline - 5;
-        putText(result, label, Point(textX, textY),
-                FONT_HERSHEY_SIMPLEX, 0.55, colour, 2);
-    }
+    };
+
+    drawDetections(contoursRed,   "red");
+    drawDetections(contoursDY,    "yellow");
+    drawDetections(contoursBlack, "black");
 
     imshow("8 - Result", result);
 }
