@@ -16,14 +16,12 @@ TARGET    := CandyDetector
 SRC       := CandyDetector.cpp
 
 all: $(TARGET)
-
 $(TARGET): $(SRC)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
-
 clean:
 	rm -f $(TARGET)
-
 run: all
 	./$(TARGET)
-
-.PHONY: all clean run
+debug:
+	./$(TARGET) --debug
+.PHONY: all clean run debug

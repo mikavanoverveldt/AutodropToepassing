@@ -6,38 +6,54 @@
 
 
 // CandyDetector.cpp
-// Candy quality inspection using a Daheng camera and OpenCV.
-//
+        // Candy quality inspection using a Daheng camera and OpenCV.
+        //
 // Pipeline:
 //   0. Contrast & Saturation boost → enhance colour separation
 //   1. Gaussian Blur              → reduce noise
 //   2. BGR → HSV                  → colour-invariant space
 //   3. Colour masks               → black, dark-yellow, red/pink
-//   4. Combined mask + morphology → isolate candy blobs
-//   5. findContours               → individual candy instances
-//   6. Per-contour classification → colour + size validity
-//   7. Draw bounding boxes        → green (valid) / red (invalid)
-//
-// Every intermediate result is shown in its own named window.
-// All tuneable parameters are exposed as trackbars.
+//   4. Morphology per mask       → clean up each colour mask
+//   5. Combined mask              → merge all candy colours
+//   6. findContours               → individual candy instances
+//   7. Per-contour classification → colour + size validity
+//   8. Draw bounding boxes        → green (valid) / red (invalid)
+        //
+        // Every intermediate result is shown in its own named window.
+        // All tuneable parameters are exposed as trackbars.
 
 
 // TODO: 
 // Morphologie eerst per kleur, niet op de gecombineerde mask (DONE)
 // Robustere kleur detectie
 
-// Finetunen met echte beelden van de camera in standaard met backlight.
+        // Finetunen met echte beelden van de camera in standaard met backlight.
 
-// Commentaar per regel toevoegen
-
-
-// Kalibratie functie met 'known-good'  kleuren
+        // Commentaar per regel toevoegen
 
 
-// TRIAL AND ERROR SETTINGS:
-// Contrast: 75/300
-// Saturation:175/300
-// Blur 5/15
+        // Kalibratie functie met 'known-good'  kleuren
+
+
+        // TRIAL AND ERROR SETTINGS:
+        // Contrast: 75/300
+        // Saturation:175/300
+        // Blur 5/15
+
+        // Black mask:
+        // 018 180 084 228 0 141
+
+        // Dark yellow mask:
+        // 026 038 069 255 000 255
+
+        // Red Mask:
+        // X 20 53 >1 X X
+
+
+        // Close K: 15
+        // Open K: 12
+
+
 
 
 
@@ -52,7 +68,7 @@ using namespace std;
 using namespace cv;
 
 // ---------------------------------------------------------------------------
-// Error helper
+// Error helper (overbodig voor nu)
 // ---------------------------------------------------------------------------
 static void PrintErrorInfo(GX_STATUS emStatus)
 {
@@ -71,31 +87,31 @@ static void PrintErrorInfo(GX_STATUS emStatus)
 struct Params
 {
     // Stage 0 – Contrast & Saturation
-    int contrastAlpha    = 100; // real multiplier = value / 100.0  (100 → ×1.0)
-    int saturationScale  = 100; // real multiplier = value / 100.0  (100 → ×1.0)
+    int contrastAlpha    = 140;  // real multiplier = value / 100.0  (75 → ×0.75)
+    int saturationScale = 180; // real multiplier = value / 100.0  (175 → ×1.75)
 
     // Stage 1 – Gaussian Blur
-    int blurKsize = 5;          // must be odd; we force it below
+    int blurKsize = 3;          // must be odd; we force it below
 
     // Stage 3a – Black candy mask (sugar-coated black)
-    int blackHMin = 0;   int blackHMax = 180;
-    int blackSMin = 0;   int blackSMax = 100;
-    int blackVMin = 0;   int blackVMax = 60;
+    int blackHMin = 18;   int blackHMax = 180;
+    int blackSMin = 84; int blackSMax = 228;
+    int blackVMin = 0;   int blackVMax = 141;
 
     // Stage 3b – Dark-yellow candy mask
-    int dyHMin = 15;  int dyHMax = 38;
-    int dySMin = 40;  int dySMax = 255;
-    int dyVMin = 30;  int dyVMax = 180;
+    int dyHMin = 26;  int dyHMax = 38;
+    int dySMin = 69;  int dySMax = 255;
+    int dyVMin = 0;   int dyVMax = 255;
 
     // Stage 3c – Red/pink mask (two hue bands)
-    int r1HMin =   0; int r1HMax =  15;
-    int r1SMin =  60;
-    int r2HMin = 155; int r2HMax = 180;
-    int r2SMin =  60;
+    int r1HMin = 0;  int r1HMax = 20;
+    int r1SMin = 53;
+    int r2HMin = 1;  int r2HMax = 0;
+    int r2SMin = 0;
 
     // Stage 4 – Morphology
-    int morphCloseK = 7;
-    int morphOpenK  = 3;
+    int morphCloseK = 15;
+    int morphOpenK  = 12;
 
     // Stage 5 – Contour size gate (area in pixels)
     int minArea     = 800;
@@ -114,18 +130,16 @@ static void createWindows()
     // Pipeline step windows
     const char* wins[] = {
         "0 - Enhanced",
-        "1 - Original",
-        "2 - Blurred",
-        "3 - HSV",
-        "4a - Mask: Black",
-        "4b - Mask: DarkYellow",
-        "4c - Mask: Red/Pink",
-        "5 - Morphology: Black",
-        "5b - Morphology: DarkYellow",
-        "5c - Morphology: Red/Pink",
-        "6 - Combined Mask",
-        "7 - Contours",
-        "8 - Result"
+        "1 - Blurred",
+        "3a - Mask: Black",
+        "3b - Mask: DarkYellow",
+        "3c - Mask: Red/Pink",
+        "4a - Morphology: Black",
+        "4b - Morphology: DarkYellow",
+        "4c - Morphology: Red/Pink",
+        "5 - Combined Mask",
+        "6 - Contours",
+        "7 - Result"
     };
     for (auto& w : wins)
     {
@@ -138,40 +152,40 @@ static void createWindows()
     createTrackbar("Saturation (x/100)", "0 - Enhanced", &P.saturationScale, 300);
 
     // ── Blur ────────────────────────────────────────────────────────────────
-    createTrackbar("Blur ksize (x2+1)", "2 - Blurred",
+    createTrackbar("Blur ksize (x2+1)", "1 - Blurred",
                    &P.blurKsize, 15); // stored as k, actual = 2k+1
 
     // ── Black mask ──────────────────────────────────────────────────────────
-    createTrackbar("H min", "4a - Mask: Black", &P.blackHMin, 180);
-    createTrackbar("H max", "4a - Mask: Black", &P.blackHMax, 180);
-    createTrackbar("S min", "4a - Mask: Black", &P.blackSMin, 255);
-    createTrackbar("S max", "4a - Mask: Black", &P.blackSMax, 255);
-    createTrackbar("V min", "4a - Mask: Black", &P.blackVMin, 255);
-    createTrackbar("V max", "4a - Mask: Black", &P.blackVMax, 255);
+    createTrackbar("H min", "3a - Mask: Black", &P.blackHMin, 180);
+    createTrackbar("H max", "3a - Mask: Black", &P.blackHMax, 180);
+    createTrackbar("S min", "3a - Mask: Black", &P.blackSMin, 255);
+    createTrackbar("S max", "3a - Mask: Black", &P.blackSMax, 255);
+    createTrackbar("V min", "3a - Mask: Black", &P.blackVMin, 255);
+    createTrackbar("V max", "3a - Mask: Black", &P.blackVMax, 255);
 
     // ── Dark-yellow mask ────────────────────────────────────────────────────
-    createTrackbar("H min", "4b - Mask: DarkYellow", &P.dyHMin, 180);
-    createTrackbar("H max", "4b - Mask: DarkYellow", &P.dyHMax, 180);
-    createTrackbar("S min", "4b - Mask: DarkYellow", &P.dySMin, 255);
-    createTrackbar("S max", "4b - Mask: DarkYellow", &P.dySMax, 255);
-    createTrackbar("V min", "4b - Mask: DarkYellow", &P.dyVMin, 255);
-    createTrackbar("V max", "4b - Mask: DarkYellow", &P.dyVMax, 255);
+    createTrackbar("H min", "3b - Mask: DarkYellow", &P.dyHMin, 180);
+    createTrackbar("H max", "3b - Mask: DarkYellow", &P.dyHMax, 180);
+    createTrackbar("S min", "3b - Mask: DarkYellow", &P.dySMin, 255);
+    createTrackbar("S max", "3b - Mask: DarkYellow", &P.dySMax, 255);
+    createTrackbar("V min", "3b - Mask: DarkYellow", &P.dyVMin, 255);
+    createTrackbar("V max", "3b - Mask: DarkYellow", &P.dyVMax, 255);
 
     // ── Red/Pink mask ────────────────────────────────────────────────────────
-    createTrackbar("Band1 H min", "4c - Mask: Red/Pink", &P.r1HMin, 180);
-    createTrackbar("Band1 H max", "4c - Mask: Red/Pink", &P.r1HMax, 180);
-    createTrackbar("Band1 S min", "4c - Mask: Red/Pink", &P.r1SMin, 255);
-    createTrackbar("Band2 H min", "4c - Mask: Red/Pink", &P.r2HMin, 180);
-    createTrackbar("Band2 H max", "4c - Mask: Red/Pink", &P.r2HMax, 180);
-    createTrackbar("Band2 S min", "4c - Mask: Red/Pink", &P.r2SMin, 255);
+    createTrackbar("Band1 H min", "3c - Mask: Red/Pink", &P.r1HMin, 180);
+    createTrackbar("Band1 H max", "3c - Mask: Red/Pink", &P.r1HMax, 180);
+    createTrackbar("Band1 S min", "3c - Mask: Red/Pink", &P.r1SMin, 255);
+    createTrackbar("Band2 H min", "3c - Mask: Red/Pink", &P.r2HMin, 180);
+    createTrackbar("Band2 H max", "3c - Mask: Red/Pink", &P.r2HMax, 180);
+    createTrackbar("Band2 S min", "3c - Mask: Red/Pink", &P.r2SMin, 255);
 
     // ── Morphology ──────────────────────────────────────────────────────────
-    createTrackbar("Close K", "6 - Combined Mask", &P.morphCloseK, 30);
-    createTrackbar("Open  K", "6 - Combined Mask",  &P.morphOpenK,  30);
+    createTrackbar("Close K", "4a - Morphology: Black", &P.morphCloseK, 30);
+    createTrackbar("Open  K", "4a - Morphology: Black",  &P.morphOpenK,  30);
 
     // ── Size thresholds ─────────────────────────────────────────────────────
-    createTrackbar("Min detect area", "7 - Contours",  &P.minArea,      20000);
-    createTrackbar("Min valid area",  "7 - Contours",  &P.minValidArea, 20000);
+    createTrackbar("Min detect area", "6 - Contours",  &P.minArea,      2000);
+    createTrackbar("Min valid area",  "6 - Contours",  &P.minValidArea, 50000);
 }
 
 // ---------------------------------------------------------------------------
@@ -193,37 +207,34 @@ static void processFrame(const Mat& colorFrame)
     }
     imshow("0 - Enhanced", enhanced);
 
-    // ── Stage 1: Show original ───────────────────────────────────────────────
-    imshow("1 - Original", colorFrame);
-
-    // ── Stage 2: Gaussian Blur ───────────────────────────────────────────────
+    // ── Stage 1: Gaussian Blur ───────────────────────────────────────────────
     int k = max(1, P.blurKsize) * 2 + 1;   // ensure odd, ≥ 3
     Mat blurred;
     GaussianBlur(enhanced, blurred, Size(k, k), 0);
-    imshow("2 - Blurred", blurred);
+    imshow("1 - Blurred", blurred);
 
-    // ── Stage 3: BGR → HSV ──────────────────────────────────────────────────
+    // ── Stage 2: BGR → HSV ──────────────────────────────────────────────────
     Mat hsv;
     cvtColor(blurred, hsv, COLOR_BGR2HSV);
-    imshow("3 - HSV", hsv);
+    imshow("2 - HSV", hsv);
 
-    // ── Stage 4a: Black mask (sugar-coated, full HSV band) ──────────────────
+    // ── Stage 3a: Black mask (sugar-coated, full HSV band) ──────────────────
     Mat maskBlack;
     inRange(hsv,
             Scalar(P.blackHMin, P.blackSMin, P.blackVMin),
             Scalar(P.blackHMax, P.blackSMax, P.blackVMax),
             maskBlack);
-    imshow("4a - Mask: Black", maskBlack);
+    imshow("3a - Mask: Black", maskBlack);
 
-    // ── Stage 4b: Dark-yellow mask ───────────────────────────────────────────
+    // ── Stage 3b: Dark-yellow mask ───────────────────────────────────────────
     Mat maskDY;
     inRange(hsv,
             Scalar(P.dyHMin, P.dySMin, P.dyVMin),
             Scalar(P.dyHMax, P.dySMax, P.dyVMax),
             maskDY);
-    imshow("4b - Mask: DarkYellow", maskDY);
+    imshow("3b - Mask: DarkYellow", maskDY);
 
-    // ── Stage 4c: Red/Pink mask (two hue bands) ──────────────────────────────
+    // ── Stage 3c: Red/Pink mask (two hue bands) ──────────────────────────────
     Mat maskR1, maskR2, maskRed;
     inRange(hsv,
             Scalar(P.r1HMin, P.r1SMin, 40),
@@ -234,9 +245,9 @@ static void processFrame(const Mat& colorFrame)
             Scalar(P.r2HMax, 255,       255),
             maskR2);
     bitwise_or(maskR1, maskR2, maskRed);
-    imshow("4c - Mask: Red/Pink", maskRed);
+    imshow("3c - Mask: Red/Pink", maskRed);
 
-    // ── Stage 5: Morphology on individual masks (before combining) ───────────
+    // ── Stage 4: Morphology on individual masks (before combining) ───────────
     int ck = max(1, P.morphCloseK);
     int ok = max(1, P.morphOpenK);
     Mat elemClose = getStructuringElement(MORPH_ELLIPSE, Size(ck * 2 + 1, ck * 2 + 1));
@@ -251,21 +262,21 @@ static void processFrame(const Mat& colorFrame)
 
     morphologyEx(maskRed, maskRedMorphed, MORPH_CLOSE, elemClose);
     morphologyEx(maskRedMorphed, maskRedMorphed, MORPH_OPEN, elemOpen);
-    imshow("5 - Morphology: Black", maskBlackMorphed);
-    imshow("5b - Morphology: DarkYellow", maskDYMorphed);
-    imshow("5c - Morphology: Red/Pink", maskRedMorphed);
+    imshow("4a - Morphology: Black", maskBlackMorphed);
+    imshow("4b - Morphology: DarkYellow", maskDYMorphed);
+    imshow("4c - Morphology: Red/Pink", maskRedMorphed);
 
-    // ── Stage 6: Combined mask (all candy colours after morphology) ──────────
+    // ── Stage 5: Combined mask (all candy colours after morphology) ──────────
     Mat maskAll;
     bitwise_or(maskBlackMorphed, maskDYMorphed, maskAll);
     bitwise_or(maskAll,          maskRedMorphed, maskAll);
-    imshow("6 - Combined Mask", maskAll);
+    imshow("5 - Combined Mask", maskAll);
 
-    // ── Stage 7: findContours ────────────────────────────────────────────────
+    // ── Stage 6: findContours ──────────────────────────────────────────────
     vector<vector<Point>> contours;
     findContours(maskAll, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
 
-    // Draw all accepted contours for the "7 - Contours" window
+    // Draw all accepted contours for the "6 - Contours" window
     Mat contourVis = enhanced.clone();
     int minA = max(1, P.minArea);
 
@@ -276,9 +287,9 @@ static void processFrame(const Mat& colorFrame)
             continue;
         drawContours(contourVis, contours, (int)i, Scalar(255, 255, 0), 2);
     }
-    imshow("7 - Contours", contourVis);
+    imshow("6 - Contours", contourVis);
 
-    // ── Stage 8: Per-candy classification + bounding box drawing ─────────────
+    // ── Stage 7: Per-candy classification + bounding box drawing ─────────────
     Mat result = enhanced.clone();
     int minValid = max(1, P.minValidArea);
 
