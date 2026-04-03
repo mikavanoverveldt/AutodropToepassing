@@ -1,61 +1,18 @@
-//////////////////////////////////////////////
-///     Work in progress                   /// 
-///
-///
-///
 
+/*
+CandyDetector.cpp
 
-// CandyDetector.cpp
-        // Candy quality inspection using a Daheng camera and OpenCV.
-        //
-// Pipeline:
-//   0. Contrast & Saturation boost → enhance colour separation
-//   1. Gaussian Blur              → reduce noise
-//   2. BGR → HSV                  → colour-invariant space
-//   3. Colour masks               → black, dark-yellow, red/pink
-//   4. Morphology per mask       → clean up each colour mask
-//   5. Combined mask              → merge all candy colours
-//   6. findContours               → individual candy instances
-//   7. Per-contour classification → colour + size validity
-//   8. Draw bounding boxes        → green (valid) / red (invalid)
-        //
-        // Every intermediate result is shown in its own named window.
-        // All tuneable parameters are exposed as trackbars.
-
-
-// TODO: 
-// Morphologie eerst per kleur, niet op de gecombineerde mask (DONE)
-// Robustere kleur detectie
-
-        // Finetunen met echte beelden van de camera in standaard met backlight.
-
-        // Commentaar per regel toevoegen
-
-
-        // Kalibratie functie met 'known-good'  kleuren
-
-
-        // TRIAL AND ERROR SETTINGS:
-        // Contrast: 75/300
-        // Saturation:175/300
-        // Blur 5/15
-
-        // Black mask:
-        // 018 180 084 228 0 141
-
-        // Dark yellow mask:
-        // 026 038 069 255 000 255
-
-        // Red Mask:
-        // X 20 53 >1 X X
-
-
-        // Close K: 15
-        // Open K: 12
+This program captures frames from a Daheng/Galaxy camera (or loads sample images in debug mode),
+processes each frame to detect candies in three color categories (black sugar-coated, dark-yellow,
+and red/pink), and displays intermediate pipeline steps. The pipeline includes contrast/saturation
+enhancement, Gaussian blur, HSV thresholding, morphology, distance-transform + watershed separation,
+contour detection and size validation. Detected candies are shown with bounding boxes and labels;
+trackbars allow interactive tuning of parameters.
 
 
 
 
+*/
 
 #include <opencv2/opencv.hpp>
 #include <iostream>
@@ -68,7 +25,7 @@ using namespace std;
 using namespace cv;
 
 // ---------------------------------------------------------------------------
-// Error helper (overbodig voor nu)
+// Error helper 
 // ---------------------------------------------------------------------------
 static void PrintErrorInfo(GX_STATUS emStatus)
 {
@@ -132,27 +89,31 @@ static Params P;
 // ---------------------------------------------------------------------------
 // createWindows() – named windows + trackbars
 // ---------------------------------------------------------------------------
-static void createWindows()
+static void createWindows(bool adjustMode)
 {
     const int W = 800, H = 500;
+
+    // Default mode: only show the final result window.
+    if (!adjustMode)
+    {
+        namedWindow("8 - Result", WINDOW_NORMAL);
+        resizeWindow("8 - Result", W, H);
+        return;
+    }
 
     // Pipeline step windows
     const char* wins[] = {
         "0 - Enhanced",
         "1 - Blurred",
-        "2 - HSV",
         "3a - Mask: Black",
         "3b - Mask: DarkYellow",
         "3c - Mask: Red/Pink",
         "4a - Morphology: Black",
-        "4b - Morphology: DarkYellow",
-        "4c - Morphology: Red/Pink",
         "4d - Watershed DT (Yellow)",
         "4e - Watershed DT (Red)",
         "4f - Separated: Black",
         "4g - Separated: DarkYellow",
         "4h - Separated: Red/Pink",
-        "5 - Combined Mask",
         "6 - Contours",
         "8 - Result"
     };
@@ -216,7 +177,7 @@ static void createWindows()
 // ---------------------------------------------------------------------------
 // applyWatershed() - separates touching objects
 // ---------------------------------------------------------------------------
-static Mat applyWatershed(const Mat& morphMask, const Mat& originalImage, 
+static Mat applyWatershed(const Mat& morphMask,
                           int distThreshPct, int dilateK, int markerDilateK = 0,
                           Mat* outDistMap = nullptr)
 {
@@ -272,7 +233,7 @@ static Mat applyWatershed(const Mat& morphMask, const Mat& originalImage,
     }
 
     // 6. Apply watershed
-    // We use a flat image instead of originalImage to avoid boundaries fluctuating due to texture/lighting
+    // Use a flat image to avoid boundaries fluctuating due to texture/lighting.
     Mat flatImg;
     cvtColor(morphMask, flatImg, COLOR_GRAY2BGR);
     watershed(flatImg, markers);
@@ -300,7 +261,7 @@ static Mat applyWatershed(const Mat& morphMask, const Mat& originalImage,
 // ---------------------------------------------------------------------------
 // processFrame() – run the full pipeline on one BGR frame
 // ---------------------------------------------------------------------------
-static void processFrame(const Mat& colorFrame)
+static void processFrame(const Mat& colorFrame, bool adjustMode)
 {
     // ── Stage 0: Contrast & Saturation enhancement ─────────────────────────────
     Mat enhanced;
@@ -314,18 +275,15 @@ static void processFrame(const Mat& colorFrame)
         merge(ch, hsv0);
         cvtColor(hsv0, enhanced, COLOR_HSV2BGR);
     }
-   //imshow("0 - Enhanced", enhanced);
 
     // ── Stage 1: Gaussian Blur ───────────────────────────────────────────────
     int k = max(1, P.blurKsize) * 2 + 1;   // ensure odd, ≥ 3
     Mat blurred;
     GaussianBlur(enhanced, blurred, Size(k, k), 0);
-    //imshow("1 - Blurred", blurred);
 
     // ── Stage 2: BGR → HSV ──────────────────────────────────────────────────
     Mat hsv;
     cvtColor(blurred, hsv, COLOR_BGR2HSV);
-    //imshow("2 - HSV", hsv);
 
     // ── Stage 3a: Black mask (full HSV band) ──────────────────
     Mat maskBlack;
@@ -333,7 +291,7 @@ static void processFrame(const Mat& colorFrame)
             Scalar(P.blackHMin, P.blackSMin, P.blackVMin),
             Scalar(P.blackHMax, P.blackSMax, P.blackVMax),
             maskBlack);
-    imshow("3a - Mask: Black", maskBlack);
+        if (adjustMode) imshow("3a - Mask: Black", maskBlack);
 
     // ── Stage 3b: Dark-yellow mask ───────────────────────────────────────────
     Mat maskDY;
@@ -341,7 +299,7 @@ static void processFrame(const Mat& colorFrame)
             Scalar(P.dyHMin, P.dySMin, P.dyVMin),
             Scalar(P.dyHMax, P.dySMax, P.dyVMax),
             maskDY);
-    imshow("3b - Mask: DarkYellow", maskDY);
+        if (adjustMode) imshow("3b - Mask: DarkYellow", maskDY);
 
     // ── Stage 3c: Red/Pink mask (two hue bands) ──────────────────────────────
     Mat maskR1, maskR2, maskRed;
@@ -354,7 +312,7 @@ static void processFrame(const Mat& colorFrame)
             Scalar(P.r2HMax, 255,       255),
             maskR2);
     bitwise_or(maskR1, maskR2, maskRed);
-    imshow("3c - Mask: Red/Pink", maskRed);
+        if (adjustMode) imshow("3c - Mask: Red/Pink", maskRed);
 
     // ── Stage 4: Morphology on individual masks ──────────────────────────────
     int ck = max(1, P.morphCloseK);
@@ -371,22 +329,22 @@ static void processFrame(const Mat& colorFrame)
 
     morphologyEx(maskRed, maskRedMorphed, MORPH_CLOSE, elemClose);
     morphologyEx(maskRedMorphed, maskRedMorphed, MORPH_OPEN, elemOpen);
-    //imshow("4a - Morphology: Black", maskBlackMorphed);
-    //imshow("4b - Morphology: DarkYellow", maskDYMorphed);
-    //imshow("4c - Morphology: Red/Pink", maskRedMorphed);
 
     // ── Stage 5: Distance Transform + Watershed separation ───────────────────
     Mat distRedMap;
-    Mat maskRedSeparated   = applyWatershed(maskRedMorphed, enhanced, P.redDistThreshPct, P.redSureBgDilateK, P.redMarkerDilateK, &distRedMap);
-    Mat maskBlackSeparated = applyWatershed(maskBlackMorphed, enhanced, P.distThreshPct, P.sureBgDilateK, 0);
+    Mat maskRedSeparated   = applyWatershed(maskRedMorphed, P.redDistThreshPct, P.redSureBgDilateK, P.redMarkerDilateK, &distRedMap);
+    Mat maskBlackSeparated = applyWatershed(maskBlackMorphed, P.distThreshPct, P.sureBgDilateK, 0);
     Mat distDYMap;
-    Mat maskDYSeparated    = applyWatershed(maskDYMorphed, enhanced, P.distThreshPct, P.sureBgDilateK, 0, &distDYMap);
+    Mat maskDYSeparated    = applyWatershed(maskDYMorphed, P.distThreshPct, P.sureBgDilateK, 0, &distDYMap);
 
-    if (!distDYMap.empty())  imshow("4d - Watershed DT (Yellow)", distDYMap);
-    if (!distRedMap.empty()) imshow("4e - Watershed DT (Red)", distRedMap);
-    imshow("4f - Separated: Black", maskBlackSeparated);
-    imshow("4g - Separated: DarkYellow", maskDYSeparated);
-    imshow("4h - Separated: Red/Pink", maskRedSeparated);
+    if (adjustMode)
+    {
+        if (!distDYMap.empty())  imshow("4d - Watershed DT (Yellow)", distDYMap);
+        if (!distRedMap.empty()) imshow("4e - Watershed DT (Red)", distRedMap);
+        imshow("4f - Separated: Black", maskBlackSeparated);
+        imshow("4g - Separated: DarkYellow", maskDYSeparated);
+        imshow("4h - Separated: Red/Pink", maskRedSeparated);
+    }
 
 
     // ── Stage 6: findContours per colour mask ────────────────────────────────
@@ -408,7 +366,7 @@ static void processFrame(const Mat& colorFrame)
     for (size_t i = 0; i < contoursBlack.size(); i++)
         if (contourArea(contoursBlack[i]) >= minA)
             drawContours(contourVis, contoursBlack, (int)i, Scalar(255, 255, 255), 2);
-    imshow("6 - Contours", contourVis);
+    if (adjustMode) imshow("6 - Contours", contourVis);
 
     // ── Stage 7: Size validation + bounding boxes (Red, Yellow, Black) ───────
     Mat result = enhanced.clone();
@@ -455,7 +413,7 @@ static void processFrame(const Mat& colorFrame)
 // ---------------------------------------------------------------------------
 // runDebugMode() – cycle through sample images in ./images/
 // ---------------------------------------------------------------------------
-static void runDebugMode()
+static void runDebugMode(bool adjustMode)
 {
     vector<String> imagePaths;
     // Use relative ./images folder (not absolute /images) to match project layout
@@ -494,8 +452,12 @@ static void runDebugMode()
     cout << "  Space / Right arrow : next image" << endl;
     cout << "  Left arrow          : previous image" << endl;
     cout << "  ESC / q             : quit" << endl;
+    if (adjustMode)
+        cout << "  UI mode             : ADJUST (all windows + trackbars)" << endl;
+    else
+        cout << "  UI mode             : RESULT ONLY (use -a/--adjust for full tuning UI)" << endl;
 
-    createWindows();
+    createWindows(adjustMode);
 
     int idx = 0;
     Mat current;
@@ -510,7 +472,7 @@ static void runDebugMode()
         }
         cout << "Image [" << (idx + 1) << "/" << filtered.size() << "]: "
              << filtered[idx] << endl;
-        processFrame(current);
+                processFrame(current, adjustMode);
     };
 
     loadAndProcess();
@@ -522,27 +484,29 @@ static void runDebugMode()
         if (key == 27 || key == 'q')
             break;
 
+        bool imageChanged = false;
+
         // Space, right arrow, or 'd' → next
         if (key == ' ' || key == 83 /* right */ || key == 'd')
         {
             idx = (idx + 1) % (int)filtered.size();
-            loadAndProcess();
+            imageChanged = true;
         }
         // Left arrow or 'a' → previous
         else if (key == 81 /* left */ || key == 'a')
         {
             idx = (idx - 1 + (int)filtered.size()) % (int)filtered.size();
+            imageChanged = true;
+        }
+
+        if (imageChanged)
+        {
             loadAndProcess();
         }
-        // Any other key while an image is loaded → reprocess with current params
-        else if (key >= 0 && !current.empty())
-        {
-            processFrame(current);
-        }
-        // Reprocess on every tick so trackbar changes take effect without a keypress
         else if (!current.empty())
         {
-            processFrame(current);
+            // Reprocess on every tick so trackbar changes take effect without a keypress.
+            processFrame(current, adjustMode);
         }
     }
 
@@ -555,14 +519,22 @@ static void runDebugMode()
 // ---------------------------------------------------------------------------
 int main(int argc, char* argv[])
 {
-    // ── Debug mode: use sample images instead of camera ──────────────────────
+    bool debugMode = false;
+    bool adjustMode = false;
+
+    // ── Parse runtime flags ──────────────────────────────────────────────────
     for (int i = 1; i < argc; i++)
     {
-        if (string(argv[i]) == "--debug" || string(argv[i]) == "-d")
-        {
-            runDebugMode();
-            return 0;
-        }
+        string arg = argv[i];
+        if (arg == "--debug" || arg == "-d") debugMode = true;
+        else if (arg == "--adjust" || arg == "-a") adjustMode = true;
+    }
+
+    // ── Debug mode: use sample images instead of camera ──────────────────────
+    if (debugMode)
+    {
+        runDebugMode(adjustMode);
+        return 0;
     }
 
     GX_STATUS    emStatus = GX_STATUS_SUCCESS;
@@ -649,7 +621,7 @@ int main(int argc, char* argv[])
     unsigned char* pRGBBuf  = new unsigned char[nPayloadSize * 3];
 
     // ── 8. Create windows & trackbars ────────────────────────────────────────
-    createWindows();
+    createWindows(adjustMode);
 
     // ── 9. Start streaming ────────────────────────────────────────────────────
     emStatus = GXStreamOn(hDevice);
@@ -659,6 +631,10 @@ int main(int argc, char* argv[])
         delete[] pRaw8Buf; delete[] pRGBBuf;
         GXCloseDevice(hDevice); GXCloseLib(); return -1;
     }
+    if (adjustMode)
+        cout << "UI mode: ADJUST (all windows + trackbars)." << endl;
+    else
+        cout << "UI mode: RESULT ONLY (use -a/--adjust for full tuning UI)." << endl;
     cout << "Streaming... Press ESC or 'q' to quit." << endl;
 
     // ── 10. Main loop ─────────────────────────────────────────────────────────
@@ -695,7 +671,7 @@ int main(int argc, char* argv[])
                 cvtColor(monoMat, colorFrame, COLOR_GRAY2BGR);
             }
 
-            processFrame(colorFrame);
+            processFrame(colorFrame, adjustMode);
         }
         else
         {
