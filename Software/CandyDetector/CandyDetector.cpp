@@ -70,8 +70,8 @@ struct Params
 
     // Stage 3b – Dark-yellow candy mask
     int dyHMin = 21;   int dyHMax = 52;
-    int dySMin = 16;   int dySMax = 255;
-    int dyVMin = 130;   int dyVMax = 255;
+    int dySMin = 30;   int dySMax = 255;
+    int dyVMin = 118;   int dyVMax = 255;
 
     // Stage 3d – Brown candy mask
     int brHMin = 12;   int brHMax = 23;
