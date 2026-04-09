@@ -64,38 +64,39 @@ struct Params
     int blurKsize = 3;          // must be odd; we force it below
 
     // Stage 3a – Black candy mask (sugar-coated black)
-    int blackHMin = 23;   int blackHMax = 136;
-    int blackSMin = 126; int blackSMax = 240;
-    int blackVMin = 0;   int blackVMax = 40;
+    int blackHMin = 0;   int blackHMax = 179;
+    int blackSMin = 30;  int blackSMax = 255;
+    int blackVMin = 0;   int blackVMax = 85;
 
     // Stage 3b – Dark-yellow candy mask
-    int dyHMin = 20;  int dyHMax = 56;
-    int dySMin = 155;  int dySMax = 249;
-    int dyVMin = 220;   int dyVMax = 255;
+    int dyHMin = 16;   int dyHMax = 40;
+    int dySMin = 40;   int dySMax = 220;
+    int dyVMin = 90;   int dyVMax = 230;
 
     // Stage 3d – Brown candy mask
-    int brHMin = 27;   int brHMax = 43;
-    int brSMin = 187;  int brSMax = 255;
-    int brVMin = 61;  int brVMax = 117;
+    int brHMin = 10;   int brHMax = 30;
+    int brSMin = 80;   int brSMax = 255;
+    int brVMin = 20;   int brVMax = 150;
 
     // Stage 3c – Red/pink mask
-    int redHMin = 12;  int redHMax = 18;
-    int redSMin = 58; int redSMax = 255;
-    int redVMin = 0;  int redVMax = 255;
+    int redHMin1 = 0;   int redHMax1 = 20;
+    int redHMin2 = 160; int redHMax2 = 180; // Second range for hue wraparound
+    int redSMin = 70;  int redSMax = 255;
+    int redVMin = 40;  int redVMax = 255;
 
     // Stage 4 – Morphology
     int morphCloseK = 11;
     int morphOpenK  = 17;
-    int redMorphCloseK = 11;
-    int redMorphOpenK  = 17;
+    int redMorphCloseK = 25;
+    int redMorphOpenK  = 11;
 
     // Stage 5 – Watershed (Black + Yellow)
     int distThreshPct = 55;
     int sureBgDilateK = 41;
     
     // Red specific watershed params
-    int redDistThreshPct = 76;
-    int redSureBgDilateK = 26;
+    int redDistThreshPct = 57;
+    int redSureBgDilateK = 9;
     int redMarkerDilateK = 2;
 
     // Stage 6 – Contour size gate (area in pixels)
@@ -169,13 +170,15 @@ static void createWindows(bool adjustMode)
     createTrackbar("V min", "3b - Mask: DarkYellow", &P.dyVMin, 255);
     createTrackbar("V max", "3b - Mask: DarkYellow", &P.dyVMax, 255);
 
-    // ── Red/Pink mask ────────────────────────────────────────────────────────
-    createTrackbar("H min", "3c - Mask: Red/Pink", &P.redHMin, 180);
-    createTrackbar("H max", "3c - Mask: Red/Pink", &P.redHMax, 180);
-    createTrackbar("S min", "3c - Mask: Red/Pink", &P.redSMin, 255);
-    createTrackbar("S max", "3c - Mask: Red/Pink", &P.redSMax, 255);
-    createTrackbar("V min", "3c - Mask: Red/Pink", &P.redVMin, 255);
-    createTrackbar("V max", "3c - Mask: Red/Pink", &P.redVMax, 255);
+     // ── Red/Pink mask ────────────────────────────────────────────────────────
+     createTrackbar("H min1", "3c - Mask: Red/Pink", &P.redHMin1, 180);
+     createTrackbar("H max1", "3c - Mask: Red/Pink", &P.redHMax1, 180);
+     createTrackbar("H min2", "3c - Mask: Red/Pink", &P.redHMin2, 180);
+     createTrackbar("H max2", "3c - Mask: Red/Pink", &P.redHMax2, 180);
+     createTrackbar("S min", "3c - Mask: Red/Pink", &P.redSMin, 255);
+     createTrackbar("S max", "3c - Mask: Red/Pink", &P.redSMax, 255);
+     createTrackbar("V min", "3c - Mask: Red/Pink", &P.redVMin, 255);
+     createTrackbar("V max", "3c - Mask: Red/Pink", &P.redVMax, 255);
 
     // ── Brown mask ───────────────────────────────────────────────────────────
     createTrackbar("H min", "3d - Mask: Brown", &P.brHMin, 180);
@@ -339,13 +342,18 @@ static void processFrame(const Mat& colorFrame, bool adjustMode)
             maskDY);
         if (adjustMode) imshow("3b - Mask: DarkYellow", maskDY);
 
-        // ── Stage 3c: Red/Pink mask ──────────────────────────────────────────────
-        Mat maskRed;
-        inRange(hsv,
-            Scalar(P.redHMin, P.redSMin, P.redVMin),
-            Scalar(P.redHMax, P.redSMax, P.redVMax),
-            maskRed);
-        if (adjustMode) imshow("3c - Mask: Red/Pink", maskRed);
+     // ── Stage 3c: Red/Pink mask ──────────────────────────────────────────────
+     Mat maskRed1, maskRed2;
+     inRange(hsv,
+         Scalar(P.redHMin1, P.redSMin, P.redVMin),
+         Scalar(P.redHMax1, P.redSMax, P.redVMax),
+         maskRed1);
+     inRange(hsv,
+         Scalar(P.redHMin2, P.redSMin, P.redVMin),
+         Scalar(P.redHMax2, P.redSMax, P.redVMax),
+         maskRed2);
+     Mat maskRed = maskRed1 | maskRed2; // Combine both hue ranges
+     if (adjustMode) imshow("3c - Mask: Red/Pink", maskRed);
 
     // ── Stage 3d: Brown mask ────────────────────────────────────────────────
     Mat maskBrown;
@@ -454,6 +462,11 @@ static void processFrame(const Mat& colorFrame, bool adjustMode)
             if (forceInvalid) label += " inv:col";
             else if (area < minValid) label += " inv:size";
             else label += " valid";
+
+            if (adjustMode)
+            {
+                label += " A=" + to_string(static_cast<int>(area));
+            }
 
             int baseline = 0;
             Size textSize = getTextSize(label, FONT_HERSHEY_SIMPLEX, 0.55, 2, &baseline);
@@ -679,6 +692,10 @@ int main(int argc, char* argv[])
     GXSetEnumValueByString(hDevice, "AcquisitionMode", "Continuous");
     GXSetEnumValueByString(hDevice, "TriggerMode",     "Off");
     GXSetAcqusitionBufferNumber(hDevice, 5);
+
+    // Enable auto exposure and auto white balance
+    GXSetEnumValueByString(hDevice, "ExposureAuto", "Continuous");
+    GXSetEnumValueByString(hDevice, "BalanceWhiteAuto", "Continuous");
 
     // ── 7. Allocate buffers ───────────────────────────────────────────────────
     unsigned char* pRaw8Buf = new unsigned char[nPayloadSize];
