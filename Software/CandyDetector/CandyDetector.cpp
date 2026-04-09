@@ -21,11 +21,6 @@ Dit programma neemt frames van een Daheng/Galaxy-camera op (of laadt voorbeeldaf
 
 */
 
-// TODO:
-// CODE CLEANUP
-// MORE COMMENTS
-// 
-
 
 #include <opencv2/opencv.hpp>
 #include <iostream>
