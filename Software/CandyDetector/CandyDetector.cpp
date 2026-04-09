@@ -3,7 +3,7 @@
 ///////////////////////////
 // Mika van Overveldt
 // Jurre Fikkers
-// 3 april 2026
+// 9 april 2026
 
 // Vak: Machine vision in de machinebouw
 // Opdracht: Ontwikkel een vision pipeline in C++ met OpenCV en Daheng/Galaxy SDK om snoepjes te detecteren op basis van kleur, vorm en grootte. Implementeer interactieve trackbars voor parameterafstemming en toon tussenresultaten in aparte vensters. Zorg voor robuuste foutafhandeling en documenteer de code duidelijk.
